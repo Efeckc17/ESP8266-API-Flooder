@@ -4,11 +4,13 @@
 A lightweight API stress testing tool using ESP8266, capable of sending high-speed login requests to any specified endpoint.
 
 ## Features
-- Rapid API request flooder for login stress testing
-- Set target API dynamically via Serial Monitor
-- Modify login credentials easily (default: `test1` / `test2`)
-- Start and stop attacks with Serial commands
-- Overheating protection to prevent hardware damage
+- Rapid API request flooder for login stress testing.
+- Support for multiple target APIs (up to 10).
+- Dynamically add target APIs via Serial Monitor.
+- Commands to add URLs, clear all URLs, start, and stop the flood.
+- Overheating protection that pauses requests if too many are sent in a short period.
+- Easily modify login credentials (default: `test2` as username and `test1` as password).
+- Clean and organized Serial Monitor output for better monitoring.
 
 ## Usage
 
